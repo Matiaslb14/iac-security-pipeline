@@ -8,36 +8,39 @@ terraform {
   }
 }
 
-# Provider block kept generic; no credentials needed for validation/linting
 provider "aws" {
   region = var.aws_region
 }
 
-# Example resource: S3 bucket with secure defaults
+# Bucket principal
 resource "aws_s3_bucket" "logs" {
   bucket        = var.bucket_name
   force_destroy = false
 }
 
-# Bucket versioning (good practice)
+# Versioning (buenas prácticas)
 resource "aws_s3_bucket_versioning" "logs_versioning" {
   bucket = aws_s3_bucket.logs.id
-  versioning_configuration {
-    status = "Enabled"
-  }
+  versioning_configuration { status = "Enabled" }
 }
 
-# Server-side encryption (good practice)
+# ENCRYPTION CON KMS (obligatorio para CKV_AWS_145)
+resource "aws_kms_key" "logs_kms" {
+  description         = "KMS key for S3 logs encryption"
+  enable_key_rotation = true
+}
+
 resource "aws_s3_bucket_server_side_encryption_configuration" "logs_encrypt" {
   bucket = aws_s3_bucket.logs.id
   rule {
     apply_server_side_encryption_by_default {
-      sse_algorithm = "AES256"
+      sse_algorithm     = "aws:kms"
+      kms_master_key_id = aws_kms_key.logs_kms.arn
     }
   }
 }
 
-# Public access block (good practice)
+# Bloqueo acceso público (hardening)
 resource "aws_s3_bucket_public_access_block" "logs_pab" {
   bucket                  = aws_s3_bucket.logs.id
   block_public_acls       = true
@@ -45,16 +48,3 @@ resource "aws_s3_bucket_public_access_block" "logs_pab" {
   ignore_public_acls      = true
   restrict_public_buckets = true
 }
-
-# ----------------------------------------------------------
-# Demo: Uncomment to trigger security findings with Checkov
-# ----------------------------------------------------------
-# resource "aws_s3_bucket" "insecure_demo" {
-#   bucket = "${var.bucket_name}-demo-public"
-#   force_destroy = true  # risky in production
-# }
-#
-# resource "aws_s3_bucket_acl" "insecure_acl" {
-#   bucket = aws_s3_bucket.insecure_demo.id
-#   acl    = "public-read"  # will trigger "public bucket" finding
-# }
