@@ -15,7 +15,7 @@ provider "aws" {
 
 # Example resource: S3 bucket with secure defaults
 resource "aws_s3_bucket" "logs" {
-  bucket = var.bucket_name
+  bucket        = var.bucket_name
   force_destroy = false
 }
 
