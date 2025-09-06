@@ -18,7 +18,7 @@ provider "aws" {
 data "aws_caller_identity" "current" {}
 
 # -----------------------------
-# KMS keys + explicit policy
+# KMS keys + explicit policy (S3 source)
 # -----------------------------
 data "aws_iam_policy_document" "kms_logs_policy" {
   statement {
@@ -55,6 +55,9 @@ resource "aws_kms_key" "logs_kms" {
   policy              = data.aws_iam_policy_document.kms_logs_policy.json
 }
 
+# -----------------------------
+# KMS para bucket de réplica
+# -----------------------------
 data "aws_iam_policy_document" "kms_replica_policy" {
   statement {
     sid     = "AllowRootAccountFullAccessReplica"
@@ -179,14 +182,24 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "replica_encrypt" 
   }
 }
 
-# Access logging (CKV_AWS_18)
+# -----------------------------
+# Access logging
+# -----------------------------
 resource "aws_s3_bucket_logging" "logs_logging" {
   bucket        = aws_s3_bucket.logs.id
   target_bucket = aws_s3_bucket.access_logs.id
   target_prefix = "s3-access-logs/"
 }
 
-# Lifecycle (CKV2_AWS_61)
+resource "aws_s3_bucket_logging" "replica_logging" {
+  bucket        = aws_s3_bucket.replica.id
+  target_bucket = aws_s3_bucket.access_logs.id
+  target_prefix = "replica-access-logs/"
+}
+
+# -----------------------------
+# Lifecycle (con filter + abort multipart)
+# -----------------------------
 resource "aws_s3_bucket_lifecycle_configuration" "logs_lifecycle" {
   bucket = aws_s3_bucket.logs.id
 
@@ -194,23 +207,62 @@ resource "aws_s3_bucket_lifecycle_configuration" "logs_lifecycle" {
     id     = "noncurrent-to-ia-then-glacier"
     status = "Enabled"
 
-    # ← REQUERIDO por el provider: define un filtro o un prefix (uno solo).
-    filter {
-      prefix = "" # aplica a todo el bucket
-    }
+    filter { prefix = "" }
 
     noncurrent_version_transition {
       noncurrent_days = 30
       storage_class   = "STANDARD_IA"
     }
-
     noncurrent_version_transition {
       noncurrent_days = 60
       storage_class   = "GLACIER"
     }
+    noncurrent_version_expiration { noncurrent_days = 180 }
 
-    noncurrent_version_expiration {
-      noncurrent_days = 180
+    abort_incomplete_multipart_upload {
+      days_after_initiation = 7
+    }
+  }
+}
+
+resource "aws_s3_bucket_lifecycle_configuration" "access_logs_lifecycle" {
+  bucket = aws_s3_bucket.access_logs.id
+
+  rule {
+    id     = "access-logs-expiration"
+    status = "Enabled"
+
+    filter { prefix = "" }
+
+    expiration { days = 365 }
+
+    abort_incomplete_multipart_upload {
+      days_after_initiation = 7
+    }
+  }
+}
+
+resource "aws_s3_bucket_lifecycle_configuration" "replica_lifecycle" {
+  bucket = aws_s3_bucket.replica.id
+
+  rule {
+    id     = "replica-noncurrent-to-archive"
+    status = "Enabled"
+
+    filter { prefix = "" }
+
+    noncurrent_version_transition {
+      noncurrent_days = 30
+      storage_class   = "STANDARD_IA"
+    }
+    noncurrent_version_transition {
+      noncurrent_days = 60
+      storage_class   = "GLACIER"
+    }
+    noncurrent_version_expiration { noncurrent_days = 180 }
+
+    abort_incomplete_multipart_upload {
+      days_after_initiation = 7
     }
   }
 }
@@ -237,13 +289,16 @@ data "aws_iam_policy_document" "replication_policy" {
   statement {
     sid       = "BucketLevel"
     actions   = ["s3:GetReplicationConfiguration", "s3:ListBucket"]
-    resources = [aws_s3_bucket.logs.arn]
+    resources = [aws_s3_bucket.logs.arn, aws_s3_bucket.access_logs.arn]
   }
 
   statement {
     sid       = "ObjectRead"
     actions   = ["s3:GetObjectVersion", "s3:GetObjectVersionAcl", "s3:GetObjectVersionTagging"]
-    resources = ["${aws_s3_bucket.logs.arn}/*"]
+    resources = [
+      "${aws_s3_bucket.logs.arn}/*",
+      "${aws_s3_bucket.access_logs.arn}/*"
+    ]
   }
 
   statement {
@@ -293,70 +348,6 @@ resource "aws_s3_bucket_replication_configuration" "logs_replication" {
   ]
 }
 
-# -----------------------------
-# (Opcional) Bloque inseguro para provocar fallo
-# -----------------------------
-# resource "aws_s3_bucket_acl" "insecure_acl" {
-#   bucket = aws_s3_bucket.logs.id
-#   acl    = "public-read"
-# }
-
-# --- 1) Access logging para el bucket replica ---
-resource "aws_s3_bucket_logging" "replica_logging" {
-  bucket        = aws_s3_bucket.replica.id
-  target_bucket = aws_s3_bucket.access_logs.id
-  target_prefix = "replica-access-logs/"
-}
-
-# --- 2) Lifecycle para access_logs ---
-resource "aws_s3_bucket_lifecycle_configuration" "access_logs_lifecycle" {
-  bucket = aws_s3_bucket.access_logs.id
-
-  rule {
-    id     = "access-logs-expiration"
-    status = "Enabled"
-
-    # requerido por el provider: filter o prefix (uno)
-    filter {
-      prefix = ""
-    }
-
-    # ejemplo simple: expirar objetos luego de 365 días
-    expiration {
-      days = 365
-    }
-  }
-}
-
-# --- 2) Lifecycle para replica ---
-resource "aws_s3_bucket_lifecycle_configuration" "replica_lifecycle" {
-  bucket = aws_s3_bucket.replica.id
-
-  rule {
-    id     = "replica-noncurrent-to-archive"
-    status = "Enabled"
-
-    filter {
-      prefix = ""
-    }
-
-    noncurrent_version_transition {
-      noncurrent_days = 30
-      storage_class   = "STANDARD_IA"
-    }
-
-    noncurrent_version_transition {
-      noncurrent_days = 60
-      storage_class   = "GLACIER"
-    }
-
-    noncurrent_version_expiration {
-      noncurrent_days = 180
-    }
-  }
-}
-
-# --- 3) Replicación también para access_logs -> replica ---
 resource "aws_s3_bucket_replication_configuration" "access_logs_replication" {
   bucket = aws_s3_bucket.access_logs.id
   role   = aws_iam_role.replication_role.arn
@@ -382,10 +373,46 @@ resource "aws_s3_bucket_replication_configuration" "access_logs_replication" {
 }
 
 # =========================
-# SNS para notificaciones S3
+# SNS para notificaciones S3 (CIFRADO CON KMS)
 # =========================
+data "aws_iam_policy_document" "sns_kms_policy" {
+  statement {
+    sid     = "AllowRootFullAccess"
+    actions = ["kms:*"]
+    principals {
+      type        = "AWS"
+      identifiers = ["arn:aws:iam::${data.aws_caller_identity.current.account_id}:root"]
+    }
+    resources = ["*"]
+  }
+
+  # Permitir a SNS usar la key
+  statement {
+    sid = "AllowSNSUseOfTheKey"
+    actions = [
+      "kms:Encrypt",
+      "kms:Decrypt",
+      "kms:ReEncrypt*",
+      "kms:GenerateDataKey*",
+      "kms:DescribeKey"
+    ]
+    principals {
+      type        = "Service"
+      identifiers = ["sns.amazonaws.com"]
+    }
+    resources = ["*"]
+  }
+}
+
+resource "aws_kms_key" "sns_kms" {
+  description         = "KMS key for SNS topic encryption"
+  enable_key_rotation = true
+  policy              = data.aws_iam_policy_document.sns_kms_policy.json
+}
+
 resource "aws_sns_topic" "s3_events" {
-  name = "s3-events-demo"
+  name              = "s3-events-demo"
+  kms_master_key_id = aws_kms_key.sns_kms.arn
 }
 
 # -------------------------
@@ -396,7 +423,7 @@ resource "aws_s3_bucket_notification" "logs_notify" {
 
   topic {
     topic_arn = aws_sns_topic.s3_events.arn
-    events    = ["s3:ObjectCreated:*"] # ejemplo mínimo
+    events    = ["s3:ObjectCreated:*"]
   }
 
   depends_on = [
