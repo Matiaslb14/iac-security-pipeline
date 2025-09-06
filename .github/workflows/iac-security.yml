@@ -1,5 +1,9 @@
 name: IaC Security
 
+permissions:
+  contents: read
+  actions: read
+
 on:
   push:
     branches: [ main, master ]
@@ -7,7 +11,7 @@ on:
 
 env:
   TF_IN_AUTOMATION: "true"
-  CHECKOV_HARD_FAIL_ON: "HIGH,CRITICAL"  # adjust to "CRITICAL" if needed
+  CHECKOV_HARD_FAIL_ON: "HIGH,CRITICAL"
 
 jobs:
   terraform_checks:
@@ -49,7 +53,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      security-events: write   # allow SARIF upload
+      security-events: write
       actions: read
     steps:
       - name: Checkout
@@ -66,7 +70,6 @@ jobs:
       - name: Run Checkov (fail on HIGH/CRITICAL)
         run: |
           checkov -d . --quiet --output sarif --output-file-path results.sarif
-          # Hard fail on severity threshold by scanning again with exit code
           if ! checkov -d . --quiet --hard-fail-on $CHECKOV_HARD_FAIL_ON; then
             echo "Checkov found HIGH/CRITICAL issues."
             EXIT_CODE=1
