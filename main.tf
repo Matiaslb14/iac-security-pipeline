@@ -293,8 +293,8 @@ data "aws_iam_policy_document" "replication_policy" {
   }
 
   statement {
-    sid       = "ObjectRead"
-    actions   = ["s3:GetObjectVersion", "s3:GetObjectVersionAcl", "s3:GetObjectVersionTagging"]
+    sid     = "ObjectRead"
+    actions = ["s3:GetObjectVersion", "s3:GetObjectVersionAcl", "s3:GetObjectVersionTagging"]
     resources = [
       "${aws_s3_bucket.logs.arn}/*",
       "${aws_s3_bucket.access_logs.arn}/*"
