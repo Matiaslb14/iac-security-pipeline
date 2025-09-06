@@ -301,3 +301,82 @@ resource "aws_s3_bucket_replication_configuration" "logs_replication" {
 #   acl    = "public-read"
 # }
 
+# --- 1) Access logging para el bucket replica ---
+resource "aws_s3_bucket_logging" "replica_logging" {
+  bucket        = aws_s3_bucket.replica.id
+  target_bucket = aws_s3_bucket.access_logs.id
+  target_prefix = "replica-access-logs/"
+}
+
+# --- 2) Lifecycle para access_logs ---
+resource "aws_s3_bucket_lifecycle_configuration" "access_logs_lifecycle" {
+  bucket = aws_s3_bucket.access_logs.id
+
+  rule {
+    id     = "access-logs-expiration"
+    status = "Enabled"
+
+    # requerido por el provider: filter o prefix (uno)
+    filter {
+      prefix = ""
+    }
+
+    # ejemplo simple: expirar objetos luego de 365 días
+    expiration {
+      days = 365
+    }
+  }
+}
+
+# --- 2) Lifecycle para replica ---
+resource "aws_s3_bucket_lifecycle_configuration" "replica_lifecycle" {
+  bucket = aws_s3_bucket.replica.id
+
+  rule {
+    id     = "replica-noncurrent-to-archive"
+    status = "Enabled"
+
+    filter {
+      prefix = ""
+    }
+
+    noncurrent_version_transition {
+      noncurrent_days = 30
+      storage_class   = "STANDARD_IA"
+    }
+
+    noncurrent_version_transition {
+      noncurrent_days = 60
+      storage_class   = "GLACIER"
+    }
+
+    noncurrent_version_expiration {
+      noncurrent_days = 180
+    }
+  }
+}
+
+# --- 3) Replicación también para access_logs -> replica ---
+resource "aws_s3_bucket_replication_configuration" "access_logs_replication" {
+  bucket = aws_s3_bucket.access_logs.id
+  role   = aws_iam_role.replication_role.arn
+
+  rule {
+    id     = "replicate-access-logs"
+    status = "Enabled"
+
+    destination {
+      bucket        = aws_s3_bucket.replica.arn
+      storage_class = "STANDARD"
+
+      encryption_configuration {
+        replica_kms_key_id = aws_kms_key.replica_kms.arn
+      }
+    }
+  }
+
+  depends_on = [
+    aws_s3_bucket_versioning.access_logs_versioning,
+    aws_s3_bucket_versioning.replica_versioning
+  ]
+}
