@@ -67,16 +67,13 @@ jobs:
       - name: Install Checkov
         run: pip install checkov
 
-      - name: Run Checkov (fail on HIGH/CRITICAL)
+      # Genera SARIF pero NUNCA falla el paso (para que el job no se pinche cuando no hay findings)
+      - name: Run Checkov (SARIF, no-fail)
         run: |
-          checkov -d . --quiet --output sarif --output-file-path results.sarif
-          if ! checkov -d . --quiet --hard-fail-on $CHECKOV_HARD_FAIL_ON; then
-            echo "Checkov found HIGH/CRITICAL issues."
-            EXIT_CODE=1
-          else
-            EXIT_CODE=0
-          fi
-          echo "EXIT_CODE=$EXIT_CODE" >> $GITHUB_ENV
+          checkov -d . \
+            --framework terraform,github_actions \
+            --output sarif \
+            --output-file-path results.sarif || true
 
       - name: Upload SARIF to GitHub Security
         if: always()
@@ -84,6 +81,10 @@ jobs:
         with:
           sarif_file: results.sarif
 
-      - name: Fail if threshold exceeded
-        if: env.EXIT_CODE == '1'
-        run: exit 1
+      # Gate real: falla solo si hay HIGH/CRITICAL
+      - name: Run Checkov gate (fail on HIGH/CRITICAL)
+        run: |
+          checkov -d . \
+            --framework terraform,github_actions \
+            --quiet \
+            --hard-fail-on "${CHECKOV_HARD_FAIL_ON}"
