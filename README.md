@@ -1,60 +1,82 @@
-# IaC Security Pipeline (Terraform + GitHub Actions + Checkov + TFLint)
+# IaC Security Pipeline 🚀  
 
-![Pipeline](https://img.shields.io/badge/IaC%20Security-Checkov%20%2B%20TFLint-blue)
-
-> Shift‑left security for Terraform: fmt/validate, lint, and security scan on every push/PR.
-
-## What this repo shows
-- **Terraform formatting & validation** (no backend required).
-- **Linting** with **TFLint** for common Terraform anti‑patterns.
-- **Security scanning** with **Checkov** (fails the build on high‑severity issues).
-- **SARIF** upload so findings appear in the GitHub **Security** tab.
-
-## Quick start
-1. **Use this template** or push this folder to a new GitHub repository.
-2. Open a PR. The workflow will run **fmt**, **validate**, **tflint**, and **checkov** automatically.
-3. Start with the sample `main.tf`. It contains a few *intentional* misconfigs (commented) to demo the pipeline.
-
-> This repo does **not** deploy anything and does **not** require AWS credentials.
-
-## Repo structure
-```
-.
-├── .github/workflows/iac-security.yml
-├── .tflint.hcl
-├── .pre-commit-config.yaml
-├── main.tf
-├── variables.tf
-└── README.md
-```
-
-## Badges (replace `YOUR_ORG/YOUR_REPO`)
-```
-![CI](https://github.com/YOUR_ORG/YOUR_REPO/actions/workflows/iac-security.yml/badge.svg)
-```
-
-## Local dev (optional)
-```bash
-# Terraform checks (no backend)
-terraform -version
-terraform fmt -recursive
-terraform init -backend=false
-terraform validate
-
-# TFLint
-tflint --init
-tflint
-
-# Checkov
-pip install checkov
-checkov -d . --quiet
-```
-
-## Notes
-- The workflow **fails** on Checkov high/critical findings. Tune this behavior with `CHECKOV_HARD_FAIL_ON` in the workflow file.
-- Add more policies, e.g., tfsec or OPA/Conftest, if you want.
+This project implements a **CI/CD pipeline for Infrastructure as Code (IaC) security** using **GitHub Actions**.  
+The goal is to enforce security and compliance checks automatically whenever Terraform code changes are pushed or reviewed.  
 
 ---
 
-### Español (resumen)
-Pipeline DevSecOps de IaC con **Terraform + TFLint + Checkov** en GitHub Actions. Valida formato, lint y seguridad en cada push/PR. **No requiere AWS** ni despliegue.
+## 🔒 Pipeline Overview  
+
+The pipeline runs on **push** and **pull requests** to the `main` branch and includes:  
+
+1. **Terraform Checks**  
+   - `terraform fmt -check` → Enforces code formatting.  
+   - `terraform init -backend=false` → Initializes Terraform without backend configuration.  
+   - `terraform validate` → Validates configuration syntax.  
+
+2. **TFLint**  
+   - Initializes and runs **TFLint** for static analysis.  
+   - Detects unused variables, deprecated arguments, and provider issues.  
+
+3. **Checkov**  
+   - Runs **Checkov** to scan Terraform code for misconfigurations.  
+   - Uploads **SARIF reports** to GitHub Security Alerts.  
+   - The pipeline fails if **HIGH/CRITICAL issues** are found.  
+
+---
+
+## 🛠️ Technologies Used  
+
+- **Terraform** (v1.6.6)  
+- **TFLint** (latest)  
+- **Checkov** (latest via pip)  
+- **GitHub Actions** (CI/CD)  
+
+---
+
+## 📂 Repository Structure  
+
+.
+├── main.tf                 # Terraform configuration
+├── variables.tf            # Input variables
+├── .tflint.hcl             # TFLint configuration
+├── .pre-commit-config.yaml # Pre-commit hooks (optional)
+├── .github/
+│   └── workflows/
+│       └── iac-security.yml  # GitHub Actions pipeline
+└── README.md
+
+⚡ Pipeline Execution
+
+✅ Terraform checks: format + init + validate
+✅ TFLint: linting and best practices
+✅ Checkov: security scanning with SARIF upload
+
+Results can be viewed in the Security > Code scanning alerts tab of this repository.
+
+📸 Example
+
+- **Terraform Checks**  
+  ![Terraform Checks](./images/terraform_checks.png)
+
+- **TFLint**  
+  ![TFLint](./images/tflint.png)
+
+- **Checkov**  
+  ![Checkov](./images/checkov.png)
+
+🎯 Value
+
+This project demonstrates a real-world DevSecOps pipeline:
+
+Automatic IaC security scanning
+
+Integration with GitHub Security Dashboard
+
+Enforces best practices for Terraform code
+
+Useful for Cloud Security, DevSecOps, and Infrastructure Engineering roles.
+
+👤 Author
+
+Matías Andrés Lagos Barra
