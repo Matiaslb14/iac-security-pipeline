@@ -380,3 +380,61 @@ resource "aws_s3_bucket_replication_configuration" "access_logs_replication" {
     aws_s3_bucket_versioning.replica_versioning
   ]
 }
+
+# =========================
+# SNS para notificaciones S3
+# =========================
+resource "aws_sns_topic" "s3_events" {
+  name = "s3-events-demo"
+}
+
+# -------------------------
+# Notificaciones: bucket logs
+# -------------------------
+resource "aws_s3_bucket_notification" "logs_notify" {
+  bucket = aws_s3_bucket.logs.id
+
+  topic {
+    topic_arn = aws_sns_topic.s3_events.arn
+    events    = ["s3:ObjectCreated:*"] # ejemplo mínimo
+  }
+
+  depends_on = [
+    aws_s3_bucket_public_access_block.logs_pab,
+    aws_s3_bucket_versioning.logs_versioning
+  ]
+}
+
+# -------------------------
+# Notificaciones: bucket access_logs
+# -------------------------
+resource "aws_s3_bucket_notification" "access_logs_notify" {
+  bucket = aws_s3_bucket.access_logs.id
+
+  topic {
+    topic_arn = aws_sns_topic.s3_events.arn
+    events    = ["s3:ObjectCreated:*"]
+  }
+
+  depends_on = [
+    aws_s3_bucket_public_access_block.access_logs_pab,
+    aws_s3_bucket_versioning.access_logs_versioning
+  ]
+}
+
+# -------------------------
+# Notificaciones: bucket replica
+# -------------------------
+resource "aws_s3_bucket_notification" "replica_notify" {
+  bucket = aws_s3_bucket.replica.id
+
+  topic {
+    topic_arn = aws_sns_topic.s3_events.arn
+    events    = ["s3:ObjectCreated:*"]
+  }
+
+  depends_on = [
+    aws_s3_bucket_public_access_block.replica_pab,
+    aws_s3_bucket_versioning.replica_versioning
+  ]
+}
